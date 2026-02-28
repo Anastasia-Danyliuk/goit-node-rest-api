@@ -2,6 +2,8 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import * as authService from "../services/authServices.js";
 import HttpError from "../helpers/HttpError.js";
+import path from "path";
+import fs from "fs/promises";
 
 const { JWT_SECRET } = process.env;
 
@@ -13,7 +15,7 @@ export const register = async (req, res, next) => {
 
         const newUser = await authService.register(req.body);
         res.status(201).json({
-            user: { email: newUser.email, subscription: newUser.subscription }
+            user: { email: newUser.email, subscription: newUser.subscription, avatarURL: newUser.avatarURL }
         });
     } catch (error) { next(error); }
 };
@@ -49,4 +51,29 @@ export const getCurrent = (req, res) => {
         email: req.user.email,
         subscription: req.user.subscription
     });
+};
+
+
+const avatarsDir = path.resolve("public", "avatars");
+
+export const updateAvatar = async (req, res, next) => {
+    try {
+        if (!req.file) {
+            throw HttpError(400, "File is required");
+        }
+        const { id } = req.user;
+        const { path: tempUpload, originalname } = req.file;
+
+        const filename = `${req.user.id}_${originalname}`;
+        const resultUpload = path.join(avatarsDir, filename);
+
+        await fs.rename(tempUpload, resultUpload);
+
+        const avatarURL = `/avatars/${filename}`;
+        await authService.updateUser(req.user.id, { avatarURL });
+
+        res.status(200).json({ avatarURL });
+    } catch (error) {
+        next(error);
+    }
 };
