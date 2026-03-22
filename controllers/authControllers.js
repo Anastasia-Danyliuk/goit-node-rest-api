@@ -4,6 +4,8 @@ import * as authService from "../services/authServices.js";
 import HttpError from "../helpers/HttpError.js";
 import path from "path";
 import fs from "fs/promises";
+import { nanoid } from "nanoid";
+import sendEmail from "../helpers/sendEmail.js";
 
 const { JWT_SECRET } = process.env;
 
@@ -27,6 +29,10 @@ export const login = async (req, res, next) => {
 
         if (!user || !(await bcrypt.compare(password, user.password))) {
             throw HttpError(401, "Email or password is wrong");
+        }
+
+        if (!user.verify) {
+            throw HttpError(401, "Email not verified");
         }
 
         const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "23h" });
@@ -76,4 +82,33 @@ export const updateAvatar = async (req, res, next) => {
     } catch (error) {
         next(error);
     }
+};
+
+export const verifyEmail = async (req, res, next) => {
+    try {
+        const { verificationToken } = req.params;
+        const result = await authService.verifyUser(verificationToken);
+        if (!result) throw HttpError(404, "User not found");
+
+        res.status(200).json({ message: 'Verification successful' });
+    } catch (error) { next(error); }
+};
+
+export const resendVerifyEmail = async (req, res, next) => {
+    try {
+        const { email } = req.body;
+        const user = await authService.findUserByEmail(email);
+
+        if (!user) throw HttpError(404, "User not found");
+        if (user.verify) throw HttpError(400, "Verification has already been passed");
+
+        const verifyEmail = {
+            to: email,
+            subject: "Verify your email",
+            html: `<a target="_blank" href="${process.env.BASE_URL}/api/auth/verify/${user.verificationToken}">Click to verify email</a>`,
+        };
+
+        await sendEmail(verifyEmail);
+        res.status(200).json({ message: "Verification email sent" });
+    } catch (error) { next(error); }
 };
